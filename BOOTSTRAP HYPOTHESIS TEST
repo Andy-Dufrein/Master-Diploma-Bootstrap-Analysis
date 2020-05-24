@@ -1,0 +1,127 @@
+# load in the data (use / instead of Windows \)
+d <- read.table(file="/Users/Liza/Downloads/proBDNF_protein.csv", header=F, sep=";")
+
+# let's add the data into the "data view"
+View(d)
+
+# check the names, etc
+names(d)
+levels(d$V1)
+# Check the last 6 row
+tail(d)
+# If there is an empty row, for example, 22nd row,  delete it:
+#d <- d[1:21, ]
+#or
+#d <- d[-22, ]
+str(d)
+# If numbers are not in "numeric" format, try to change their type or replace "," with ".":
+#d$V1 <- as.character(d$V2)
+#d$V1 <- as.numeric(d$V2)
+# If you want to attach smth new, run detach first:
+detach()
+# Use attach In order to not to write $:
+attach(d)
+# how many observations in each group?
+table(V1)
+# let's look at a boxplot of protein/actin by those 2 groups (or many)
+boxplot(V2~V1, las=1, ylab="protein/actin", 
+        xlab="virus",main="virus influence on BDNF-HA expression")
+
+# If you want to perform pairwise t-test and work with strings and filter, install "tidyverse" library:
+#install.packages("tidyverse")
+#install.packages("rstatix")
+#install.packages("ggpubr")
+library(tidyverse)
+library(rstatix)
+library(ggpubr)
+#
+#pwc <- d %>%
+#  pairwise_t_test(V2~V1)
+#pwc
+
+##########################################
+### START HERE FOR ADDITIONAL ANALYSIS ###
+##########################################
+
+# prepare filter: "^c" - starts with "c", [C] - contains "C", | - and
+flt = stringr::str_detect(d$V1, "^b|[C]") 
+#I use d_CTRL_mBDNF, d_CTRL_BDNF and d_CTRL_pBDNF;
+(d_CTRL_BDNF = filter(d, flt)) 
+flt
+# Don't forget to detach the previous dataset!
+detach(d)
+attach(d_CTRL_BDNF)
+
+# let's look at the Independent 2-sample t-test
+t.test(V2~V1, paired=F, var.eq=F)
+# let's look at the Wilcoxon aka Mann-Whitney U 
+wilcox.test(V2~V1, paired=F)  # tests Ho: medians are equal
+# let's look at the Kolmogorov-Smirnov 2-sample test
+ks.test(d$V2[d$V1=="CTRL"], d$V2[d$V1=="bdnf"], paired=F)     # tests Ho: distributions are same
+
+# lets calculate the absolute diff in means
+test.stat1 <- abs(mean(d$V2[d$V1=="CTRL"]) - mean(d$V2[d$V1=="bdnf"]))
+test.stat1
+
+# lets calculate the absolute diff in medians
+test.stat2 <- abs(median(d$V2[d$V1=="CTRL"]) - median(d$V2[d$V1=="bdnf"])) 
+test.stat2
+
+########################
+##  BOOTSTRAPPING... ###
+########################
+
+# let's bootstrap...112358
+set.seed(112358)   # for reproducibility
+n <- length(V1)  # the number of observations to sample
+n
+B <- 10000  # the number of bootstrap samples
+variable <- V2  # the variable we will resample from
+
+# now, get those bootstrap samples (without loops!)
+BootstrapSamples <- matrix( sample(variable, size= n*B, replace=TRUE), 
+                            nrow=n, ncol=B)
+
+dim(BootstrapSamples)
+table(V1)
+
+# now, calculate the means (Yc and Ym) for each of the bootstrap samples
+# initialize the vector to store the TEST-STATS
+Boot.test.stat1 <- rep(0,B)
+Boot.test.stat2 <- rep(0,B)
+# run through a loop, each time calculating the bootstrap test.stat
+for (i in 1:B){
+  # calculate the boot-test-stat1 and save it
+### IMPORTANT! Check the number of observations and
+  #put the right numbers in the BootstrapSamples[N:N,i]
+  Boot.test.stat1[i] <- abs( mean(BootstrapSamples[1:5,i]) - 
+                               mean(BootstrapSamples[6:11,i]) )
+  # calculate the boot-test-stat2 and save it
+  Boot.test.stat2[i] <- abs( median(BootstrapSamples[1:5,i]) - 
+                               median(BootstrapSamples[6:11,i])  )
+}
+
+# before going too far, let's remind ourselves of the OBSERVED TEST STATS
+test.stat1; test.stat2
+# and, take a look at the first 20 Bootstrap-TEST STATS for 1 and 2
+round(Boot.test.stat1[1:20], 1)
+round(Boot.test.stat2[1:20], 1)
+
+# and, let's calculate the bootstrap p-value...
+# notice how we can ask R a true/false question...(for the first 20)
+(Boot.test.stat1 >= test.stat1)[1:20]
+# and if we ask for the mean of all of those, it treats 0=FALSE, 1=TRUE
+#...calculate the p-value
+p1 <- mean( Boot.test.stat1 >= test.stat1)
+p1
+# let's calculate the p-value for test statistic 2 (abs diff in medians)
+p2 <- mean( Boot.test.stat2 >= test.stat2)
+p2
+
+# let's take a look at a density plot of all the Bootstrap test-stats, and 
+# add in our Observed test stat
+plot(density(Boot.test.stat1), 
+     xlab=paste0("p-value MEAN = ", p1,", p-value MEDIAN = ", p2) , 
+     main="Bootstrap Test Stats CTRL vs bdnf", las=1)
+abline(v=test.stat1, col="blue", lty="dotted")
+text(60,0.0005, "p-value", col="blue", cex=0.7)

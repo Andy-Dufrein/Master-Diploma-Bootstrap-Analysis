@@ -1,4 +1,5 @@
 # load in the data (use / instead of Windows \)
+# make sure your file doesn't have headers and has only 2 columns: group and value
 d <- read.table(file="/Users/Liza/Downloads/proBDNF_protein.csv", header=F, sep=";")
 
 # let's add the data into the "data view"
